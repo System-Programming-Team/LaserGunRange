@@ -1,0 +1,43 @@
+# OpenCV environment set
+
+sudo apt-get update
+sudo apt-get install -y build-essential cmake pkg-config
+sudo apt-get install -y libjpeg-dev libtiff5-dev libpng-dev
+sudo apt-get install -y libavcodec-dev libavformat-dev libswscale-dev libv4l-dev
+sudo apt-get install -y libxvidcore-dev libx264-dev
+sudo apt-get install -y libgtk2.0-dev
+sudo apt-get install -y libatlas-base-dev gfortran
+
+wget https://github.com/mdadams/jasper/archive/version-2.0.14.tar.gz
+tar -vxf version-2.0.14.tar.gz
+cd jasper-version-2.0.14/
+mkdir build
+cd build
+cmake ..
+make
+sudo make install
+
+cd ~
+wget -O opencv.zip https://github.com/opencv/opencv/archive/2.4.13.6.zip
+unzip opencv.zip
+
+cd ~/opencv-2.4.13.6/
+mkdir build
+cd build
+cmake -D CMAKE_BUILD_TYPE=RELEASE \
+    -D CMAKE_INSTALL_PREFIX=/usr/local ..
+
+sudo nano /home/minipc/opencv-2.4.13.6/modules/highgui/src/cap_ffmpeg_impl.hpp
+AVFMT_RAWPICTURE 을 0으로
+make
+
+sudo make install
+sudo ldconfig
+
+gcc -o test test.c `pkg-config --cflags --libs opencv`
+
+sudo apt-get install v4l2loopback-dkms
+sudo modprobe v4l2loopback video_nr=0
+
+# LaserDetect
+gcc laser.c -o laser `pkg-config --cflags --libs opencv`

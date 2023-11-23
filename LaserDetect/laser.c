@@ -1,108 +1,76 @@
-#include <cv.h>
-#include <highgui.h>
 #include <stdio.h>
 #include <math.h>
-#include <stdlib.h>
+#include <opencv2/highgui/highgui_c.h>
+#include <opencv2/imgproc/imgproc_c.h>
 
-int main(int argc, char** argv) {
-
-    // Target in camera view
-    double CenterX = 426.5;
-    double CenterY = 190.5;
-    double Radius = 40.0;
-
-    // Video capture dimensions
-    int width = 800;
-    int height = 640;
-    
-    // Open the default video camera
+int main() {
     CvCapture* capture = cvCaptureFromCAM(0);
-    cvSetCaptureProperty(capture, CV_CAP_PROP_FRAME_WIDTH, width);
-    cvSetCaptureProperty(capture, CV_CAP_PROP_FRAME_HEIGHT, height);
-    
-    // Load the target image
-    IplImage* image = cvLoadImage("target.jpg", CV_LOAD_IMAGE_COLOR);
-    double target_x = image->width * 0.5;
-    double target_y = image->height * 0.5;
-    double target_Radius = (target_x < target_y) ? target_x : target_y;
-    
-    // Create a window
-    cvNamedWindow("Result", CV_WINDOW_AUTOSIZE);
-    
-    int ShotCount = 0;
-    double Score = 0;
-    double largestArea = 0;
-
-    while (1) {
-        // Capture frame-by-frame
-        IplImage* frame = cvQueryFrame(capture);
-        if (!frame) break;
-
-        // Convert to grayscale
-        IplImage* grey_image = cvCreateImage(cvGetSize(frame), IPL_DEPTH_8U, 1);
-        cvCvtColor(frame, grey_image, CV_BGR2GRAY);
-
-        // Thresholding the image
-        cvThreshold(grey_image, grey_image, 245, 255, CV_THRESH_BINARY);
-        
-        // Find contours
-        CvSeq* contours;
-        CvMemStorage* storage = cvCreateMemStorage(0);
-        cvFindContours(grey_image, storage, &contours, sizeof(CvContour), CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE, cvPoint(0, 0));
-
-        CvSeq* cnt = contours;
-        largestArea = 0; // Reset the largestArea for each frame
-
-        for (; cnt != NULL; cnt = cnt->h_next) {
-            double area = fabs(cvContourArea(cnt, CV_WHOLE_SEQ, 0));
-            if (area > largestArea) {
-                largestArea = area;
-                CvPoint2D32f center;
-                float radius;
-                cvMinEnclosingCircle(cnt, &center, &radius);
-
-                // Assuming the ball is the largest contour
-                double shot_x = (center.x - CenterX) / Radius;
-                double shot_y = (center.y - CenterY) / Radius;
-                double dist = sqrt(shot_x * shot_x + shot_y * shot_y);
-                
-                // Calculate score based on distance
-                if (dist < 1.0) {
-                    Score += (1.0 - dist);
-                }
-                
-                // Draw on the target image
-                CvPoint shotPoint = cvPoint(cvRound(center.x), cvRound(center.y));
-                cvCircle(image, shotPoint, 5, CV_RGB(60,60,255), 10, 8, 0);
-                cvCircle(image, shotPoint, 10, CV_RGB(120,120,120), 1, 8, 0);
-                
-                // Increment the shot count and check if the round is over
-                ShotCount++;
-                if (ShotCount > 6) {
-                    Score /= 7.0;
-                    Score *= 100.0;
-                    printf("Your Score: %lf\n", Score);
-                    // Reset for next round
-                    Score = 0;
-                    ShotCount = 0;
-                    cvCopy(image, frame, NULL); // This should copy the original frame to start over
-                }
-            }
-        }
-
-        // Display the resulting frame
-        cvShowImage("Result", frame);
-
-        // Check for exit key
-        if (cvWaitKey(1) >= 0) break;
-
-        // Release memory
-        cvReleaseImage(&grey_image);
-        cvReleaseMemStorage(&storage);
+    if (!capture) {
+        fprintf(stderr, "카메라를 열 수 없습니다.\n");
+        return -1;
     }
 
-    // When everything done, release the capture and destroy the windows
+    cvNamedWindow("타겟 인식", CV_WINDOW_AUTOSIZE);
+    cvNamedWindow("처리된 영상", CV_WINDOW_AUTOSIZE);
+
+    IplImage* frame;
+    IplImage* gray;
+    IplImage* blurred;
+    IplImage* edge;
+    CvMemStorage* storage = cvCreateMemStorage(0);
+
+    while (1) {
+        frame = cvQueryFrame(capture);
+        if (!frame) break;
+
+        gray = cvCreateImage(cvGetSize(frame), IPL_DEPTH_8U, 1);
+        blurred = cvCreateImage(cvGetSize(frame), IPL_DEPTH_8U, 1);
+        edge = cvCreateImage(cvGetSize(frame), IPL_DEPTH_8U, 1);
+
+        cvCvtColor(frame, gray, CV_BGR2GRAY);
+        cvSmooth(gray, blurred, CV_GAUSSIAN, 9, 9, 0, 0);
+        cvCanny(blurred, edge, 5, 30, 3);
+
+        CvSeq* contours;
+        cvFindContours(edge, storage, &contours, sizeof(CvContour), CV_RETR_LIST, CV_CHAIN_APPROX_SIMPLE, cvPoint(0, 0));
+
+        // 처리된 이미지 준비
+        IplImage* processed = cvCreateImage(cvGetSize(frame), IPL_DEPTH_8U, 3);
+        cvSet(processed, cvScalar(255, 255, 255, 0), NULL); // 하얀색으로 초기화
+
+        while (contours) {
+            if (contours->total >= 5) {
+                double area = cvContourArea(contours, CV_WHOLE_SEQ, 0);
+                if (area > 6) {
+                    double perimeter = cvArcLength(contours, CV_WHOLE_SEQ, 1);
+                    double circularity = 4 * M_PI * area / (perimeter * perimeter);
+
+                    if (circularity > 0.75) {
+                        CvBox2D ellipse = cvFitEllipse2(contours);
+                        cvEllipseBox(processed, ellipse, CV_RGB(255, 0, 0), 2, 8, 0);
+                    }
+                }
+            }
+            contours = contours->h_next;
+        }
+
+        cvShowImage("타겟 인식", frame);
+        cvShowImage("처리된 영상", processed);
+
+        char c = cvWaitKey(30);
+        if (c == 'q') break;
+
+        cvReleaseImage(&processed);
+        cvClearMemStorage(storage);
+        cvReleaseImage(&gray);
+        cvReleaseImage(&blurred);
+        cvReleaseImage(&edge);
+    }
+
     cvReleaseCapture(&capture);
-    cvDestroyAllWindows();
+    cvDestroyWindow("타겟 인식");
+    cvDestroyWindow("처리된 영상");
+    cvReleaseMemStorage(&storage);
+
     return 0;
 }
