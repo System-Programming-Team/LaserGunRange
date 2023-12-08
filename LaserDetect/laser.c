@@ -59,7 +59,7 @@ int main() {
         cvOr(redMask, redMask2, redMask, NULL);
 
         // 검은색 필터링
-        cvInRangeS(gray, cvScalar(0), cvScalar(50), blackMask);
+        cvInRangeS(gray, cvScalar(0, 0, 0, 0), cvScalar(50, 0, 0, 0), blackMask);
 
         CvSeq* contours;
         cvFindContours(edge, storage, &contours, sizeof(CvContour), CV_RETR_LIST, CV_CHAIN_APPROX_SIMPLE, cvPoint(0, 0));
