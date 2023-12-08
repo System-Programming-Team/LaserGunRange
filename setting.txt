@@ -17,6 +17,7 @@ cmake ..
 make
 sudo make install
 
+
 cd ~
 wget -O opencv.zip https://github.com/opencv/opencv/archive/2.4.13.6.zip
 unzip opencv.zip
@@ -27,9 +28,10 @@ cd build
 cmake -D CMAKE_BUILD_TYPE=RELEASE \
     -D CMAKE_INSTALL_PREFIX=/usr/local ..
 
-sudo nano /home/minipc/opencv-2.4.13.6/modules/highgui/src/cap_ffmpeg_impl.hpp
-AVFMT_RAWPICTURE 을 0으로
 make
+sudo nano /home/sysp/opencv-2.4.13.6/modules/highgui/src/cap_ffmpeg_impl.hpp
+AVFMT_RAWPICTURE 을 0으로
+CODEC_FLAG_GLOBAL_HEADER을 AV_CODEC_FLAG_GLOBAL_HEADER로
 
 sudo make install
 sudo ldconfig
