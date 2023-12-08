@@ -30,6 +30,9 @@ int main() {
     IplImage* hsv;
     IplImage* redMask;
     IplImage* redMask2;
+    IplImage* blackMask;
+
+    int score = 0; // 점수 저장 변수
 
     while (1) {
         frame = cvQueryFrame(capture);
@@ -38,24 +41,25 @@ int main() {
         gray = cvCreateImage(cvGetSize(frame), IPL_DEPTH_8U, 1);
         blurred = cvCreateImage(cvGetSize(frame), IPL_DEPTH_8U, 1);
         edge = cvCreateImage(cvGetSize(frame), IPL_DEPTH_8U, 1);
-
-        hsv = cvCreateImage(cvGetSize(frame), IPL_DEPTH_8U, 3);
-        redMask = cvCreateImage(cvGetSize(frame), IPL_DEPTH_8U, 1);
-        redMask2 = cvCreateImage(cvGetSize(frame), IPL_DEPTH_8U, 1);
+        blackMask = cvCreateImage(cvGetSize(frame), IPL_DEPTH_8U, 1);
 
         cvCvtColor(frame, gray, CV_BGR2GRAY);
         cvSmooth(gray, blurred, CV_GAUSSIAN, 9, 9, 0, 0);
         cvCanny(blurred, edge, 5, 30, 3);
 
         // BGR을 HSV로 변환
+        hsv = cvCreateImage(cvGetSize(frame), IPL_DEPTH_8U, 3);
         cvCvtColor(frame, hsv, CV_BGR2HSV);
 
         // 빨간색 범위 필터링
+        redMask = cvCreateImage(cvGetSize(frame), IPL_DEPTH_8U, 1);
+        redMask2 = cvCreateImage(cvGetSize(frame), IPL_DEPTH_8U, 1);
         cvInRangeS(hsv, lower_red, upper_red, redMask);
         cvInRangeS(hsv, lower_red2, upper_red2, redMask2);
-
-        // 두 마스크 결합
         cvOr(redMask, redMask2, redMask, NULL);
+
+        // 검은색 필터링
+        cvInRangeS(gray, cvScalar(0), cvScalar(50), blackMask);
 
         CvSeq* contours;
         cvFindContours(edge, storage, &contours, sizeof(CvContour), CV_RETR_LIST, CV_CHAIN_APPROX_SIMPLE, cvPoint(0, 0));
@@ -65,19 +69,17 @@ int main() {
         cvSet(processed, cvScalar(255, 255, 255, 0), NULL); // 하얀색으로 초기화
 
         while (contours) {
-            if (contours->total >= 5) {
-                double area = cvContourArea(contours, CV_WHOLE_SEQ, 0);
-                if (area > 6) {
-                    double perimeter = cvArcLength(contours, CV_WHOLE_SEQ, 1);
-                    double circularity = 4 * M_PI * area / (perimeter * perimeter);
+            double area = cvContourArea(contours, CV_WHOLE_SEQ, 0);
+            if (area > 100) { // 면적이 100 이상인 원만 인식
+                CvBox2D ellipse = cvFitEllipse2(contours);
+                cvEllipseBox(processed, ellipse, CV_RGB(255, 0, 0), 2, 8, 0);
 
-                    if (circularity > 0.75) {
-                        CvBox2D ellipse = cvFitEllipse2(contours);
-                        cvEllipseBox(processed, ellipse, CV_RGB(255, 0, 0), 2, 8, 0);
+                // 원의 면적에 따른 점수 할당
+                int redScore = (int)(10000 / area); // 예시 점수 계산 방식
 
-                        // 타겟 영역 안에 빨간색이 있는지 확인
-                        // 이 부분은 타겟의 위치와 크기를 기반으로 추가 로직을 작성해야 합니다.
-                    }
+                // 검은 원 안에 빨간 원이 있는지 확인
+                if (cvPointPolygonTest(contours, cvPoint2D32f(ellipse.center.x, ellipse.center.y), 0) > 0) {
+                    score += redScore;
                 }
             }
             contours = contours->h_next;
@@ -89,6 +91,7 @@ int main() {
         char c = cvWaitKey(30);
         if (c == 'q') break;
 
+        // 리소스 해제
         cvReleaseImage(&processed);
         cvClearMemStorage(storage);
         cvReleaseImage(&gray);
@@ -97,12 +100,15 @@ int main() {
         cvReleaseImage(&hsv);
         cvReleaseImage(&redMask);
         cvReleaseImage(&redMask2);
+        cvReleaseImage(&blackMask);
     }
 
     cvReleaseCapture(&capture);
     cvDestroyWindow("타겟 인식");
     cvDestroyWindow("처리된 영상");
     cvReleaseMemStorage(&storage);
+
+    printf("Final Score: %d\n", score);
 
     return 0;
 }
