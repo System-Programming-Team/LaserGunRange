@@ -14,6 +14,9 @@
 bool waiting = true;
 uint8_t led;
 
+#define DEBUG 0
+#define OPEN 1
+
 void *communicate_data(void *sock);
 
 typedef struct{
@@ -52,6 +55,7 @@ Coordinate* averageAndGroup(Coordinate* coords, int length, int* newLength) {
 }
 
 int main(int argc, char *argv[]){
+#if DEBUG
     if (argc != 3) {
         fprintf(stderr, "Usage: %s <IP> <port>\n", argv[0]);
         exit(1);
@@ -73,17 +77,17 @@ int main(int argc, char *argv[]){
         fprintf(stderr, "[*] connection failed\n");
         return 1;
     }
-
+#endif
     Coordinate coords[10];
     CvCapture* capture = cvCaptureFromCAM(0);
     if (!capture) {
         fprintf(stderr, "카메라를 열 수 없습니다.\n");
         return -1;
     }
-
-    //cvNamedWindow("타겟 인식", CV_WINDOW_AUTOSIZE);
-    //cvNamedWindow("처리된 영상", CV_WINDOW_AUTOSIZE);
-    
+#if OPEN
+    cvNamedWindow("타겟 인식", CV_WINDOW_AUTOSIZE);
+    cvNamedWindow("처리된 영상", CV_WINDOW_AUTOSIZE);
+#endif
     IplImage* frame;
     IplImage* gray;
     IplImage* blurred;
@@ -164,15 +168,19 @@ int main(int argc, char *argv[]){
                         if((recv>>i)&1){
                             if(dist<newCoords[i].indeh/2 && ellipseLaser.center.x!=0 && ellipseLaser.center.y!=0){
                                 led=1<<i;
+                                #if DEBUG
                                 waiting=false;
-                                printf("$d번 맞음",i);
+                                #endif
+                                printf("$d번 맞음\n",i);
                             }
                         }
                     }
+                    #if DEBUG
                     if(pthread_create(&communicate_thread, NULL, communicate_data, (void*)&fd)<0){
                         fprintf(stderr, "[*] communicate thread not created.\n");
                         return 1;
                     }
+                    #endif
                     ellipseLaser.center.x=0,ellipseLaser.center.y=0;
                     usleep(500*1000);
                     break;
@@ -181,14 +189,13 @@ int main(int argc, char *argv[]){
             contours2 = contours2->h_next;
         }
 
-    
-    //    cvShowImage("타겟 인식", frame);
-      //  cvShowImage("처리된 영상", processed);
+#if OPEN    
+        cvShowImage("타겟 인식", frame);
+        cvShowImage("처리된 영상", processed);
 
-    
-     //   char c = cvWaitKey(30);
-      //  if (c == 'q') break;
-    
+        char c = cvWaitKey(30);
+        if (c == 'q') break;
+#endif    
         cvReleaseImage(&processed);
         cvClearMemStorage(storage);
         cvReleaseImage(&gray);
@@ -200,17 +207,19 @@ int main(int argc, char *argv[]){
     }
     
     cvReleaseCapture(&capture);
-   // cvDestroyWindow("타겟 인식");
-   // cvDestroyWindow("처리된 영상");
+#if OPEN
+    cvDestroyWindow("타겟 인식");
+    cvDestroyWindow("처리된 영상");
+#endif
     cvReleaseMemStorage(&storage);
-    
+#if DEBUG
       // 스레드가 종료될 때까지 대기
     pthread_join(communicate_thread, NULL);
-
     close(fd);
+#endif
     return 0;
 }
-
+#if DEBUG
 void *communicate_data(void *sock){
     int fd=*(int*)sock;
 
@@ -220,3 +229,4 @@ void *communicate_data(void *sock){
         send(fd, &led, sizeof(led), 0);
     }
 }
+#endif
