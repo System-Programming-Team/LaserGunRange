@@ -10,11 +10,12 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <time.h>
 
 bool waiting = true;
 uint8_t led;
 
-#define DEBUG 0
+#define CLIENT 0
 #define OPEN 1
 
 void *communicate_data(void *sock);
@@ -25,37 +26,29 @@ typedef struct{
     float indeh;
 }Coordinate;
 
-int compare(const void* a, const void* b) {
-    Coordinate* coordA = (Coordinate*)a;
-    Coordinate* coordB = (Coordinate*)b;
-    return (coordA->index - coordB->index);
-}
-Coordinate* averageAndGroup(Coordinate* coords, int length, int* newLength) {
-    qsort(coords, length, sizeof(Coordinate), compare);
-
-    Coordinate* newCoords = (Coordinate*)malloc(sizeof(Coordinate) * length);
-    Coordinate temp;
-    int j = 0;
-    
-    for(int i = 0; i < length-1; i++) {
-        if(coords[i+1].index-coords[i].index<3){
-          coords[i+1]=coords[i];
-          coords[i].index=-1;
+void check_and_add(Coordinate coords[], int *size, Coordinate new_coords){
+    for(int i = 0; i < *size; i++) {
+        if(abs(coords[i].index - new_coords.index) <= 3) {
+            return; // 새로운 값과 기존 값의 차이가 3 이하라면 함수 종료
         }
     }
-    
-    for(int i=0; i<length; i++) {
-      if(coords[i].index==-1) continue;
-      newCoords[j] = coords[i];
-      j+=1;
-    }
-    *newLength = j;
-    
-    return newCoords;
+
+    // 새로운 값과 기존 값의 차이가 모두 3 초과라면 배열에 추가
+    coords[*size] = new_coords;
+    (*size)++;
+}
+// 사용자 정의 비교 함수
+int compare(const void *a, const void *b) {
+    Coordinate *coordA = (Coordinate *)a;
+    Coordinate *coordB = (Coordinate *)b;
+
+    if (coordA->indeh < coordB->indeh) return 1;
+    else if (coordA->indeh > coordB->indeh) return -1;
+    else return 0;
 }
 
 int main(int argc, char *argv[]){
-#if DEBUG
+#if CLIENT
     if (argc != 3) {
         fprintf(stderr, "Usage: %s <IP> <port>\n", argv[0]);
         exit(1);
@@ -78,6 +71,7 @@ int main(int argc, char *argv[]){
         return 1;
     }
 #endif
+    time_t start,end;
     Coordinate coords[10];
     CvCapture* capture = cvCaptureFromCAM(0);
     if (!capture) {
@@ -92,8 +86,7 @@ int main(int argc, char *argv[]){
     IplImage* gray;
     IplImage* blurred;
     IplImage* edge;
-    IplImage* hsv;
-    IplImage* redMask;
+
     CvMemStorage* storage = cvCreateMemStorage(0);
     
     int score = 0;
@@ -101,21 +94,16 @@ int main(int argc, char *argv[]){
     while (1) {
         frame = cvQueryFrame(capture);
         if (!frame) break;
-        int order=0;
+        int point=0;
         uint send, recv=3;
     
         gray = cvCreateImage(cvGetSize(frame), IPL_DEPTH_8U, 1);
         blurred = cvCreateImage(cvGetSize(frame), IPL_DEPTH_8U, 1);
         edge = cvCreateImage(cvGetSize(frame), IPL_DEPTH_8U, 1);
-        hsv = cvCreateImage(cvGetSize(frame), IPL_DEPTH_8U, 3);
-        redMask = cvCreateImage(cvGetSize(frame), IPL_DEPTH_8U, 1);
     
         cvCvtColor(frame, gray, CV_BGR2GRAY);
         cvSmooth(gray, blurred, CV_GAUSSIAN, 9, 9, 0, 0);
         cvCanny(blurred, edge, 5, 30, 3);
-    
-        cvCvtColor(frame, hsv, CV_BGR2HSV);
-        cvInRangeS(hsv, cvScalar(0, 150, 150, 0), cvScalar(10, 255, 255, 0), redMask);
     
         CvSeq* contours1;
         CvSeq* contours2;
@@ -137,17 +125,16 @@ int main(int argc, char *argv[]){
                 if(area>200 && circularity > 0.3){
                     ellipseCircle = cvFitEllipse2(contours1);
                     cvEllipseBox(processed, ellipseCircle, CV_RGB(0, 255, 0), 2, 8, 0);  // 초록색 원 그리기
-
-                    coords[order].index=ellipseCircle.center.x;
-                    coords[order].indey=ellipseCircle.center.y;
-                    coords[order].indeh=ellipseCircle.size.height;
-                    order++;
+                    Coordinate new_coords;
+                    new_coords.index=ellipseCircle.center.x;
+                    new_coords.indey=ellipseCircle.center.y;
+                    new_coords.indeh=ellipseCircle.size.height;
+                    check_and_add(coords, &point, new_coords);
                 }
             }
             contours1=contours1->h_next;
         }
-        int newLength;
-        Coordinate* newCoords = averageAndGroup(coords, order, &newLength);
+        qsort(coords, point, sizeof(Coordinate), compare); // qsort 함수로 정렬
 
         while (contours2) {
             if (contours2->total >= 5) {
@@ -160,30 +147,30 @@ int main(int argc, char *argv[]){
                 if (area <= 200 && circularity > 0.3) { // 레이저 포인트를 원으로 인식 (크기가 20 이하)
                     ellipseLaser = cvFitEllipse2(contours2);
                     cvEllipseBox(processed, ellipseLaser, CV_RGB(255, 0, 0), 2, 8, 0);  // 레이저 포인트를 빨간색 원으로 표시
-                    for(int i=0;i<newLength;i++){
-                        double dx=ellipseLaser.center.x - coords[order].index;
-                        double dy=ellipseLaser.center.y - coords[order].indey;
+                    for(int i=0;i<point;i++){
+                        double dx=ellipseLaser.center.x - coords[i].index;
+                        double dy=ellipseLaser.center.y - coords[i].indey;
                         double dist=sqrt(dx*dx + dy*dy);
-                        printf("Laser center %d:%f, Circle center %d:%f\n",i,ellipseLaser.center.x, i, newCoords[i].index);
-                        if((recv>>i)&1){
-                            if(dist<newCoords[i].indeh/2 && ellipseLaser.center.x!=0 && ellipseLaser.center.y!=0){
+                        end=time(NULL);
+                        if(dist<coords[i].indeh/2 && ellipseLaser.center.x!=0 && ellipseLaser.center.y!=0 && difftime(end,start)>0.5){
+                            printf("%d번 맞음\n",i);
+                            #if CLIENT
+                            if((recv>>i)&1){
                                 led=1<<i;
-                                #if DEBUG
                                 waiting=false;
-                                #endif
-                                printf("$d번 맞음\n",i);
                             }
+                            #endif
+                            ellipseLaser.center.x=0,ellipseLaser.center.y=0;
+                            start=time(NULL);
+                            break;
                         }
                     }
-                    #if DEBUG
+                    #if CLIENT
                     if(pthread_create(&communicate_thread, NULL, communicate_data, (void*)&fd)<0){
                         fprintf(stderr, "[*] communicate thread not created.\n");
                         return 1;
                     }
                     #endif
-                    ellipseLaser.center.x=0,ellipseLaser.center.y=0;
-                    usleep(500*1000);
-                    break;
                 }
             }
             contours2 = contours2->h_next;
@@ -201,9 +188,6 @@ int main(int argc, char *argv[]){
         cvReleaseImage(&gray);
         cvReleaseImage(&blurred);
         cvReleaseImage(&edge);
-        cvReleaseImage(&hsv);
-        cvReleaseImage(&redMask);
-        free(newCoords);
     }
     
     cvReleaseCapture(&capture);
@@ -212,14 +196,14 @@ int main(int argc, char *argv[]){
     cvDestroyWindow("처리된 영상");
 #endif
     cvReleaseMemStorage(&storage);
-#if DEBUG
+#if CLIENT
       // 스레드가 종료될 때까지 대기
     pthread_join(communicate_thread, NULL);
     close(fd);
 #endif
     return 0;
 }
-#if DEBUG
+#if CLIENT
 void *communicate_data(void *sock){
     int fd=*(int*)sock;
 
