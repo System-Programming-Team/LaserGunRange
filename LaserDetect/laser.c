@@ -72,7 +72,7 @@ int main(int argc, char *argv[]){
     Coordinate coords[10];
     CvCapture* capture=cvCaptureFromCAM(0);
     if(!capture){
-        fprintf(stderr, "카메라를 열 수 없습니다.\n");
+        fprintf(stderr, "Cannot Open Camera.\n");
         return -1;
     }
 #if OPEN
