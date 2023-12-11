@@ -42,4 +42,4 @@ sudo apt-get install v4l2loopback-dkms
 sudo modprobe v4l2loopback video_nr=0
 
 # LaserDetect
-gcc laser.c -o laser `pkg-config --cflags --libs opencv`
+gcc laser.c -o laser `pkg-config --cflags --libs opencv` -lpthread
