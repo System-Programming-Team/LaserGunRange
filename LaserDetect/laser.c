@@ -13,12 +13,9 @@
 #include<time.h>
 
 bool waiting = true;
-uint8_t led;
 
-#define CLIENT 0
-#define OPEN 0
-
-void *communicate_data(void *sock);
+#define CLIENT 1
+#define OPEN 1
 
 typedef struct{
     float index;
@@ -46,15 +43,13 @@ int compare(const void *a, const void *b){
 
 int main(int argc, char *argv[]){
 #if CLIENT
+    uint8_t led;
     if(argc!=3){
         fprintf(stderr, "Usage : %s <IP> <port>\n", argv[0]);
         exit(1);
     }
-    // 파일 디스크립터, 포트, 서버 주소, send, receive 스레드 저장할 변수 선언
     int fd, port=atoi(argv[2]);
     struct sockaddr_in server_addr;
-    pthread_t communicate_thread;
-    // 소켓생성을 위한 argument의 서버 주소, domain, port 지정
     fd=socket(AF_INET, SOCK_STREAM, 0);
     server_addr.sin_family=AF_INET;
     server_addr.sin_port=htons(port);
@@ -69,6 +64,7 @@ int main(int argc, char *argv[]){
     }
 #endif
     time_t start,end;
+
     Coordinate coords[10];
     CvCapture* capture=cvCaptureFromCAM(0);
     if(!capture){
@@ -79,7 +75,9 @@ int main(int argc, char *argv[]){
     printf("Open window1\n");
     cvNamedWindow("Raw Image", CV_WINDOW_AUTOSIZE);
     printf("Open window2\n");
+    cvResizeWindow("Raw Image", 640, 480);
     cvNamedWindow("Processed Image", CV_WINDOW_AUTOSIZE);
+    cvResizeWindow("Processed Image", 640, 480);
     printf("Opening Done\n");
 #endif
     IplImage* frame;
@@ -95,7 +93,6 @@ int main(int argc, char *argv[]){
         frame=cvQueryFrame(capture);
         if(!frame) break;
         int point=0;
-        uint send, recv;
     
         gray=cvCreateImage(cvGetSize(frame), IPL_DEPTH_8U, 1);
         blurred=cvCreateImage(cvGetSize(frame), IPL_DEPTH_8U, 1);
@@ -119,7 +116,7 @@ int main(int argc, char *argv[]){
 
                 CvBox2D ellipseCircle;
 
-                if(area>200 && circularity>0.3){
+                if(area>200 && circularity>0.4){
                     ellipseCircle = cvFitEllipse2(contours);
                     cvEllipseBox(processed, ellipseCircle, CV_RGB(0, 255, 0), 2, 8, 0);  // 초록색 원 그리기
                     Coordinate new_coords;
@@ -142,7 +139,7 @@ int main(int argc, char *argv[]){
 
                 CvBox2D ellipseLaser;
 
-                if(area<=200 && circularity>0.3){
+                if(area<=200 && circularity>0.4){
                     ellipseLaser=cvFitEllipse2(contours);
                     cvEllipseBox(processed, ellipseLaser, CV_RGB(255, 0, 0), 2, 8, 0);  // 레이저 포인트를 빨간색 원으로 표시
                     for(int i=0;i<point;i++){
@@ -153,22 +150,14 @@ int main(int argc, char *argv[]){
                         if(dist<coords[i].indeh/2 && ellipseLaser.center.x!=0 && ellipseLaser.center.y!=0 && difftime(end,start)>0.5){
                             printf("%d번 맞음\n",i);
                             #if CLIENT
-                            if((recv>>i)&1){
-                                led=1<<i;
-                                waiting=false;
-                            }
+                            led=1<<i;
+                            send(fd, &led, sizeof(led), 0);
                             #endif
                             ellipseLaser.center.x=0, ellipseLaser.center.y=0;
                             start=time(NULL);
                             break;
                         }
                     }
-                    #if CLIENT
-                    if(pthread_create(&communicate_thread, NULL, communicate_data, (void*)&fd)<0){
-                        fprintf(stderr, "[*] communicate thread not created.\n");
-                        return 1;
-                    }
-                    #endif
                 }
             }
             contours = contours->h_next;
@@ -177,6 +166,8 @@ int main(int argc, char *argv[]){
 #if OPEN    
         cvShowImage("Raw Image", frame);
         cvShowImage("Processed Image", processed);
+        char c = cvWaitKey(30);
+        if (c == 'q') break;
 #endif    
         cvReleaseImage(&processed);
         cvClearMemStorage(storage);
@@ -191,20 +182,7 @@ int main(int argc, char *argv[]){
 #endif
     cvReleaseMemStorage(&storage);
 #if CLIENT
-    // 스레드가 종료될 때까지 대기
-    pthread_join(communicate_thread, NULL);
     close(fd);
 #endif
     return 0;
 }
-#if CLIENT
-void *communicate_data(void *sock){
-    int fd=*(int*)sock;
-
-    while(1){
-        while (waiting) {};
-        waiting = true;
-        send(fd, &led, sizeof(led), 0);
-    }
-}
-#endif
