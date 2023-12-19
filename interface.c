@@ -147,9 +147,9 @@ int main(int argc, char *argv[]) {
                     break;
                 }
             }
+            if (cur_score >= SCORE_TO_BONUS_STAGE1 && bonus_stage == 0) bonus_stage++;
+            if (cur_score >= SCORE_TO_BONUS_STAGE2 && bonus_stage == 1) bonus_stage++;
         }
-        if (cur_score >= SCORE_TO_BONUS_STAGE1 && bonus_stage == 0) bonus_stage++;
-        if (cur_score >= SCORE_TO_BONUS_STAGE2 && bonus_stage == 1) bonus_stage++;
     }
 
     for (int i = 0; i < NUM_LED; i++)
