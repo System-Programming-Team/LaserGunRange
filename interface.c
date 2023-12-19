@@ -44,6 +44,7 @@ int cur_score;
 double note[] = {261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88, 523.26};
 
 void stageStartUpRoutine(void);
+void endRoutine(void);
 void *openCV(void *arg);
 void *laserGun(void *arg);
 void *buzzer(void *arg);
@@ -152,14 +153,14 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    for (int i = 0; i < NUM_LED; i++)
-        if (GPIOWrite(LED + i, LOW) == -1)
-            error_handling("gpio write error");
+    endRoutine();
 
     continue_game = 0;
 
     pthread_join(p_thread[0], (void **)&status);
     pthread_join(p_thread[1], (void **)&status);
+    sound = 1;
+    pthread_join(p_thread[2], (void **)&status);
 
     for (int i = 0; i < NUM_LED; i++)
         if (GPIOUnexport(LED + i) == -1)
@@ -198,13 +199,19 @@ void stageStartUpRoutine(void) {
     PWMWriteDutyCycle(PWM, LOW);
 }
 
+void endRoutine(void) {
+    for (int i = 0; i < NUM_LED; i++)
+        if (GPIOWrite(LED + i, LOW) == -1)
+            error_handling("gpio write error");
+}
+
 void *openCV(void *arg) {
     /*
     communicate with camera
     */
     int clnt = *(int *)arg;
     printf("camera on\n");
-    while(1) {
+    while(continue_game) {
         if (recv(clnt, &newled, sizeof(newled), 0) <= 0) break;
         printf("%d\n", newled);
         if(newled & led) {
@@ -215,6 +222,8 @@ void *openCV(void *arg) {
             led = (~newled) & led;
         }
     }
+    continue_game = 0;
+    endRoutine();
 }
 
 void *laserGun(void *arg) {
@@ -224,7 +233,7 @@ void *laserGun(void *arg) {
     int clnt = *(int *)arg;
     printf("lasergun on\n");
     int arr[5];
-    while (1) {
+    while (continue_game) {
         arr[0] = continue_game;
         arr[1] = cur_score;
         arr[2] = remain_time--;
@@ -238,6 +247,7 @@ void *laserGun(void *arg) {
 void *buzzer(void *arg) {
     while(1) {
         while(!sound) {};
+        if (continue_game == 0) break;
         sound = false;
         PWMWritePeriod(PWM, HZ / note[hitnote]);
         PWMWriteDutyCycle(PWM, SOUND_VOLUME);
