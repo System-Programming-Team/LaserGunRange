@@ -218,7 +218,7 @@ void *openCV(void *arg) {
             for (hitnote = 0; newled >> hitnote; hitnote++);
             hitnote--;
             sound = true;
-            cur_score += (int)(led - newled) + stage;
+            cur_score += newled + stage;
             led = (~newled) & led;
         }
     }
