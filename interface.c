@@ -157,7 +157,6 @@ int main(int argc, char *argv[]) {
 
     continue_game = 0;
 
-    pthread_join(p_thread[0], (void **)&status);
     pthread_join(p_thread[1], (void **)&status);
     sound = 1;
     pthread_join(p_thread[2], (void **)&status);
