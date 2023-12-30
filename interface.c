@@ -126,17 +126,17 @@ int main(int argc, char *argv[]) {
 
     //main thread
     const int max_stage = 3;
-    for (stage = 1; stage <= max_stage + bonus_stage; stage++) {
+    for (stage = 1; continue_game && stage <= max_stage + bonus_stage; stage++) {
         stageStartUpRoutine();
         remain_time = MIN;
-        while (remain_time >= 0) {
+        while (continue_game && remain_time >= 0) {
             //stage start
             int temp_time = remain_time;
             int temp_score = cur_score;
             int sec = 8 - stage;
             if(sec < 5) sec = 5;
             ledSet();
-            while(remain_time >= 0 && temp_time - remain_time <= sec) {
+            while(continue_game && remain_time >= 0 && temp_time - remain_time <= sec) {
                 //set start
                 for (int i = 0; i < NUM_LED; i++)
                     if (GPIOWrite(LED + i, 0x1 & (led >> i)) == -1)
@@ -157,9 +157,7 @@ int main(int argc, char *argv[]) {
 
     continue_game = 0;
 
-    pthread_join(p_thread[1], (void **)&status);
     sound = 1;
-    pthread_join(p_thread[2], (void **)&status);
 
     for (int i = 0; i < NUM_LED; i++)
         if (GPIOUnexport(LED + i) == -1)
